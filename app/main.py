@@ -1,4 +1,5 @@
 import socket  # noqa: F401
+import threading
 
 class Request:
     def __init__(self, req_bytes):
@@ -60,38 +61,42 @@ def main():
     while True:
         conn, address = server_socket.accept() # wait for client
         
-        data = conn.recv(100)
-        req = Request(data)
-
-        url = req.url
-        res = Response()
-        if url == b"/":
-            res.set_status(200)
-            message = res.get_message()
-        elif url.startswith(b"/echo"):
-            
-            echo_pl = url[6:]
-            
-            res = Response()
-            res.set_status(200)
-            res.set_headers(len(echo_pl))
-            
-            res.set_body(echo_pl)
-            
-            message = res.get_message()
-        elif url == b"/user-agent":
-            res.set_status(200)
-            ua = req.get_user_agent()
-            res.set_headers(len(ua))
-            res.set_body(ua)        
-            message = res.get_message()
-        else: 
-            res.set_status(404)
-            message = res.get_message()
+        t = threading.Thread(target=handle_client, args=(conn, address))
+        t.start()
         
-        print(message) 
-        conn.send(message)
 
+def handle_client(conn, address):
+    data = conn.recv(100)
+    req = Request(data)
+
+    url = req.url
+    res = Response()
+    if url == b"/":
+        res.set_status(200)
+        message = res.get_message()
+    elif url.startswith(b"/echo"):
+        
+        echo_pl = url[6:]
+        
+        res = Response()
+        res.set_status(200)
+        res.set_headers(len(echo_pl))
+        
+        res.set_body(echo_pl)
+        
+        message = res.get_message()
+    elif url == b"/user-agent":
+        res.set_status(200)
+        ua = req.get_user_agent()
+        res.set_headers(len(ua))
+        res.set_body(ua)        
+        message = res.get_message()
+    else: 
+        res.set_status(404)
+        message = res.get_message()
+    
+    print(message) 
+    conn.send(message)
 
 
 if __name__ == "__main__":
