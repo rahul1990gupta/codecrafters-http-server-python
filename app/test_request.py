@@ -14,3 +14,9 @@ class TestRequest(unittest.TestCase):
 
         self.assertEqual(req.url, b"/echo/abc")
         self.assertEqual(req.verb, b"GET")
+
+    def test_encoding(self):
+        data = b"GET /echo/pineapple HTTP/1.1\r\nHost: localhost:4221\r\nAccept-Encoding: gzip\r\n\r\n"
+        req = Request(data)
+
+        self.assertEqual(req.encodings, b"gzip")

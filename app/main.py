@@ -5,6 +5,9 @@ import threading
 
 class Request:
     def __init__(self, req_bytes):
+        self.user_agent = b""
+        self.encodings = b""
+
         line_header, self.body  = req_bytes.split(b"\r\n\r\n")
         
         # parse line_header
@@ -14,18 +17,21 @@ class Request:
         self.headers = [ l.strip() for l in lh_parts[1:]]
 
         self.verb, self.url, protocol = line.split(b" ")
-    
-    def get_user_agent(self):
+        self.parse_headers()
+
+    def parse_headers(self):
         for header in self.headers:
             if header.startswith(b"User-Agent:"):
-                return header.split(b" ")[1]
-
-       
+                self.user_agent = header.split(b" ")[1]
+            if header.startswith(b"Accept-Encoding:"):
+                self.encodings = b" ".join(header.split(b" ")[1:])
+                print("header", header)
+                print("encodings", self.encodings)
 
 class Response:
     def __init__(self):
         self.line = None
-        self.headers = None
+        self.headers = b""
         self.body = None
 
     def set_status(self, code):
@@ -39,8 +45,11 @@ class Response:
     def set_headers(self, dtype, size):
         type_header = b"Content-Type: " + dtype.encode() + b"\r\n"
         length_header = b"Content-Length: " + f"{size}\r\n".encode()
-        
-        self.headers = type_header + length_header
+            
+        self.headers += type_header + length_header
+    
+    def set_encoding(self, encoding_type):
+        self.headers += b"Content-Encoding: " + encoding_type + b"\r\n"
 
     def set_body(self, body):
         self.body = body
@@ -78,20 +87,23 @@ def handle_client(conn, address):
 
     url = req.url
     res = Response()
+
+    if b"gzip" in req.encodings:
+        res.set_encoding(b"gzip")
+
     if url == b"/":
         res.set_status(200)
     elif url.startswith(b"/echo"):
         
         echo_pl = url[6:]
         
-        res = Response()
         res.set_status(200)
         res.set_headers("text/plain", len(echo_pl))
         
         res.set_body(echo_pl)
     elif url == b"/user-agent":
         res.set_status(200)
-        ua = req.get_user_agent()
+        ua = req.user_agent
         res.set_headers("text/plain", len(ua))
         res.set_body(ua)        
     elif url.startswith(b"/files") and req.verb == b"GET":
@@ -114,7 +126,6 @@ def handle_client(conn, address):
         with open(fpath, 'wb') as f:
             f.write(req.body)
         res.set_status(201)
-
     else: 
         res.set_status(404)
     
