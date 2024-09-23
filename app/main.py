@@ -11,24 +11,43 @@ class Request:
         self.headers = [ l.strip() for l in lh_parts[1:]]
 
         self.verb, self.url, protocol = line.split(b" ")
-        
+    
+    def get_user_agent(self):
+        for header in self.headers:
+            if header.startswith(b"User-Agent:"):
+                return header.split(b" ")[1]
+
+       
 
 class Response:
     def __init__(self):
-        pass
+        self.line = None
+        self.headers = None
+        self.body = None
 
-    def set_line(self, line):
-        self.line = line
+    def set_status(self, code):
+        if code == 200:
+            self.line = b"HTTP/1.1 200 OK"
+        elif code == 404:
+            self.line = b"HTTP/1.1 404 Not Found"
 
-    def set_headers(self, headers):
+    def set_headers(self, size):
+        headers = b"Content-Type: text/plain\r\nContent-Length: " + f"{size}".encode() + b"\r\n" 
         self.headers = headers
 
     def set_body(self, body):
         self.body = body
 
     def get_message(self):
-        return self.line + b"\r\n" + self.headers + b"\r\n" + self.body
+        message = self.line 
+        message += b"\r\n"
+        if self.headers:
+            message += self.headers
+        message += b"\r\n"
+        if self.body:
+            message += self.body
 
+        return message
 
 def main():
     # You can use print statements as follows for debugging, they'll be visible when running tests.
@@ -38,7 +57,6 @@ def main():
     #
     server_socket = socket.create_server(("localhost", 4221), reuse_port=True)
 
-    # data = server_socket.recv(48)
     while True:
         conn, address = server_socket.accept() # wait for client
         
@@ -46,23 +64,32 @@ def main():
         req = Request(data)
 
         url = req.url
+        res = Response()
         if url == b"/":
-            message = b"HTTP/1.1 200 OK\r\n\r\n"
+            res.set_status(200)
+            message = res.get_message()
         elif url.startswith(b"/echo"):
             
             echo_pl = url[6:]
             
             res = Response()
-            res.set_line(b"HTTP/1.1 200 OK")
-            
-            headers = b"Content-Type: text/plain\r\nContent-Length: " + f"{len(echo_pl)}".encode() + b"\r\n" 
-            res.set_headers(headers)
+            res.set_status(200)
+            res.set_headers(len(echo_pl))
             
             res.set_body(echo_pl)
             
             message = res.get_message()
+        elif url == b"/user-agent":
+            res.set_status(200)
+            ua = req.get_user_agent()
+            res.set_headers(len(ua))
+            res.set_body(ua)        
+            message = res.get_message()
         else: 
-            message = b"HTTP/1.1 404 Not Found\r\n\r\n"
+            res.set_status(404)
+            message = res.get_message()
+        
+        print(message) 
         conn.send(message)
 
 
