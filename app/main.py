@@ -1,5 +1,6 @@
 import os
 import sys
+import gzip
 import socket  # noqa: F401
 import threading
 
@@ -28,10 +29,40 @@ class Request:
                 print("header", header)
                 print("encodings", self.encodings)
 
+class Headers:
+    def __init__(self):
+        self.size = None
+        self.dtype = None
+        self.encoding = None
+
+    def set_size(self, size):
+        # int
+        self.size = size
+    
+    def set_dtype(self, dtype):
+        # bytes
+        self.dtype = dtype
+
+    def set_encoding(self, encoding):
+        # bytes
+        self.encoding = encoding 
+
+    def get_bytes(self):
+        buff = b""
+        if self.dtype:
+            buff += b"Content-Type: " + self.dtype + b"\r\n"
+        if self.size:
+            buff += b"Content-Length: " + f"{self.size}\r\n".encode()
+        if self.encoding:
+            buff += b"Content-Encoding: " + self.encoding + b"\r\n"
+
+        return buff
+
+
 class Response:
     def __init__(self):
         self.line = None
-        self.headers = b""
+        self.headers = Headers()
         self.body = None
 
     def set_status(self, code):
@@ -42,26 +73,22 @@ class Response:
         elif code == 404:
             self.line = b"HTTP/1.1 404 Not Found"
 
-    def set_headers(self, dtype, size):
-        type_header = b"Content-Type: " + dtype.encode() + b"\r\n"
-        length_header = b"Content-Length: " + f"{size}\r\n".encode()
-            
-        self.headers += type_header + length_header
-    
-    def set_encoding(self, encoding_type):
-        self.headers += b"Content-Encoding: " + encoding_type + b"\r\n"
-
     def set_body(self, body):
         self.body = body
 
     def get_message(self):
+        body = self.body 
+        if b"gzip" == self.headers.encoding:
+            body = gzip.compress(body)
+            self.headers.set_size(len(body)) 
+
         message = self.line 
         message += b"\r\n"
         if self.headers:
-            message += self.headers
+            message += self.headers.get_bytes()
         message += b"\r\n"
         if self.body:
-            message += self.body
+            message += body
 
         return message
 
@@ -89,7 +116,7 @@ def handle_client(conn, address):
     res = Response()
 
     if b"gzip" in req.encodings:
-        res.set_encoding(b"gzip")
+        res.headers.set_encoding(b"gzip")
 
     if url == b"/":
         res.set_status(200)
@@ -98,13 +125,15 @@ def handle_client(conn, address):
         echo_pl = url[6:]
         
         res.set_status(200)
-        res.set_headers("text/plain", len(echo_pl))
+        res.headers.set_dtype(b"text/plain")
+        res.headers.set_size(len(echo_pl))
         
         res.set_body(echo_pl)
     elif url == b"/user-agent":
         res.set_status(200)
         ua = req.user_agent
-        res.set_headers("text/plain", len(ua))
+        res.headers.set_dtype(b"text/plain")
+        res.headers.set_size(len(ua))
         res.set_body(ua)        
     elif url.startswith(b"/files") and req.verb == b"GET":
         dir_name = sys.argv[2]
@@ -117,7 +146,8 @@ def handle_client(conn, address):
                 content = f.read()
 
             res.set_status(200)
-            res.set_headers("application/octet-stream", len(content))
+            res.headers.set_size(len(content))
+            res.headers.set_dtype(b"application/octet-stream")
             res.set_body(content)
     elif url.startswith(b"/files") and req.verb == b"POST":
         dir_name = sys.argv[2]
