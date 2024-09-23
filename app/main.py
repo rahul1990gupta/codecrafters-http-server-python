@@ -5,7 +5,7 @@ import threading
 
 class Request:
     def __init__(self, req_bytes):
-        line_header, body  = req_bytes.split(b"\r\n\r\n")
+        line_header, self.body  = req_bytes.split(b"\r\n\r\n")
         
         # parse line_header
         lh_parts = line_header.split(b"\r\n")
@@ -31,6 +31,8 @@ class Response:
     def set_status(self, code):
         if code == 200:
             self.line = b"HTTP/1.1 200 OK"
+        elif code == 201:
+            self.line = b"HTTP/1.1 201 Created"
         elif code == 404:
             self.line = b"HTTP/1.1 404 Not Found"
 
@@ -70,7 +72,8 @@ def main():
         
 
 def handle_client(conn, address):
-    data = conn.recv(100)
+    data = conn.recv(1000)
+    print("received \n", data) 
     req = Request(data)
 
     url = req.url
@@ -91,7 +94,7 @@ def handle_client(conn, address):
         ua = req.get_user_agent()
         res.set_headers("text/plain", len(ua))
         res.set_body(ua)        
-    elif url.startswith(b"/files"):
+    elif url.startswith(b"/files") and req.verb == b"GET":
         dir_name = sys.argv[2]
         fname = url[7:]
         fpath = os.path.join(dir_name, fname.decode()) 
@@ -104,6 +107,14 @@ def handle_client(conn, address):
             res.set_status(200)
             res.set_headers("application/octet-stream", len(content))
             res.set_body(content)
+    elif url.startswith(b"/files") and req.verb == b"POST":
+        dir_name = sys.argv[2]
+        fname = url[7:]
+        fpath = os.path.join(dir_name, fname.decode()) 
+        with open(fpath, 'wb') as f:
+            f.write(req.body)
+        res.set_status(201)
+
     else: 
         res.set_status(404)
     
