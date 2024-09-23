@@ -1,3 +1,5 @@
+import os
+import sys
 import socket  # noqa: F401
 import threading
 
@@ -32,9 +34,11 @@ class Response:
         elif code == 404:
             self.line = b"HTTP/1.1 404 Not Found"
 
-    def set_headers(self, size):
-        headers = b"Content-Type: text/plain\r\nContent-Length: " + f"{size}".encode() + b"\r\n" 
-        self.headers = headers
+    def set_headers(self, dtype, size):
+        type_header = b"Content-Type: " + dtype.encode() + b"\r\n"
+        length_header = b"Content-Length: " + f"{size}\r\n".encode()
+        
+        self.headers = type_header + length_header
 
     def set_body(self, body):
         self.body = body
@@ -73,28 +77,37 @@ def handle_client(conn, address):
     res = Response()
     if url == b"/":
         res.set_status(200)
-        message = res.get_message()
     elif url.startswith(b"/echo"):
         
         echo_pl = url[6:]
         
         res = Response()
         res.set_status(200)
-        res.set_headers(len(echo_pl))
+        res.set_headers("text/plain", len(echo_pl))
         
         res.set_body(echo_pl)
-        
-        message = res.get_message()
     elif url == b"/user-agent":
         res.set_status(200)
         ua = req.get_user_agent()
-        res.set_headers(len(ua))
+        res.set_headers("text/plain", len(ua))
         res.set_body(ua)        
-        message = res.get_message()
+    elif url.startswith(b"/files"):
+        dir_name = sys.argv[2]
+        fname = url[7:]
+        fpath = os.path.join(dir_name, fname.decode()) 
+        if not os.path.exists(fpath):
+            res.set_status(404)
+        else:
+            with open(fpath, 'rb') as f:
+                content = f.read()
+
+            res.set_status(200)
+            res.set_headers("application/octet-stream", len(content))
+            res.set_body(content)
     else: 
         res.set_status(404)
-        message = res.get_message()
     
+    message = res.get_message()
     print(message) 
     conn.send(message)
 
